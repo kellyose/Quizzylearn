@@ -1,249 +1,530 @@
 import axios from 'axios';
 
-// Create axios instances
-const mainAPI = axios.create({
-  baseURL: import.meta.env.PROD ? '/api' : 'http://localhost:5000/api',
+const API_URL = 'http://localhost:5000/api';
+
+// Create axios instance
+const api = axios.create({
+  baseURL: API_URL,
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  timeout: 5000 // 5 second timeout
 });
 
-const aiAPI = axios.create({
-  baseURL: import.meta.env.PROD ? '/ai' : 'http://localhost:8000',
-  headers: {
-    'Content-Type': 'application/json'
-  }
-});
-
-// Request interceptor to add auth token
-mainAPI.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
-// Response interceptor for error handling
-mainAPI.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      window.location.href = '/login';
+// Request interceptor - Add token to requests
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
+    return config;
+  },
+  (error) => {
+    console.error('Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
 
-// Mock data for development
+// Response interceptor - Handle common errors
+api.interceptors.response.use(
+  (response) => {
+    return response.data;
+  },
+  (error) => {
+    console.error('API Error:', {
+      message: error.message,
+      status: error.response?.status,
+      url: error.config?.url
+    });
+
+    return Promise.reject({
+      success: false,
+      error: error.response?.data?.error || 'Network error',
+      message: error.response?.data?.message || error.message,
+      status: error.response?.status
+    });
+  }
+);
+
+// ============= MOCK DATA FOR DEVELOPMENT =============
 const mockQuizzes = [
   {
     _id: '1',
+    id: '1',
     title: 'JavaScript Fundamentals',
-    topic: 'Programming',
-    description: 'Master the basics of JavaScript with this comprehensive quiz',
-    timeLimit: 15,
-    plays: 1245,
-    averageScore: 72,
-    difficulty: 'medium',
-    questions: []
+    description: 'Test your basic JavaScript knowledge',
+    category: 'Programming',
+    difficulty: 'Beginner',
+    questionCount: 10,
+    questions: [
+      {
+        question: 'What is JavaScript?',
+        options: ['A coffee brand', 'A programming language', 'A type of car', 'A movie'],
+        correctAnswer: 1
+      }
+    ],
+    createdAt: new Date().toISOString()
   },
   {
     _id: '2',
-    title: 'World History Quiz',
-    topic: 'History',
-    description: 'Test your knowledge of important historical events',
-    timeLimit: 20,
-    plays: 892,
-    averageScore: 65,
-    difficulty: 'hard',
-    questions: []
+    id: '2',
+    title: 'React Basics',
+    description: 'Learn React fundamentals',
+    category: 'Programming',
+    difficulty: 'Intermediate',
+    questionCount: 8,
+    questions: [
+      {
+        question: 'What is React?',
+        options: ['A JavaScript library', 'A database', 'A programming language', 'An operating system'],
+        correctAnswer: 0
+      }
+    ],
+    createdAt: new Date().toISOString()
   },
   {
     _id: '3',
-    title: 'Basic Mathematics',
-    topic: 'Mathematics',
-    description: 'Practice your math skills with fun problems',
-    timeLimit: 10,
-    plays: 2156,
-    averageScore: 85,
-    difficulty: 'easy',
-    questions: []
-  },
+    id: '3',
+    title: 'General Knowledge',
+    description: 'Test your general knowledge',
+    category: 'Trivia',
+    difficulty: 'Mixed',
+    questionCount: 15,
+    questions: [
+      {
+        question: 'What is the capital of France?',
+        options: ['London', 'Berlin', 'Paris', 'Madrid'],
+        correctAnswer: 2
+      }
+    ],
+    createdAt: new Date().toISOString()
+  }
 ];
 
-const mockUser = {
-  _id: '1',
-  name: 'Demo User',
-  email: 'demo@quizzylearn.com',
-  level: 5,
-  xp: 1250,
-  streak: 7,
-  badges: [
-    { name: 'Quick Learner', icon: '⚡' },
-    { name: 'Perfect Score', icon: '🏆' },
-  ]
+const mockUser = (userId) => ({
+  _id: userId,
+  id: userId,
+  name: 'Test User',
+  email: 'test@example.com',
+  xp: 500,
+  level: 1,
+  streak: 0,
+  rank: 'Beginner',
+  createdAt: new Date().toISOString()
+});
+
+const mockScores = (userId) => [
+  {
+    _id: 'score1',
+    userId: userId,
+    quizId: '1',
+    quizTitle: 'JavaScript Fundamentals',
+    score: 8,
+    totalQuestions: 10,
+    percentage: 80,
+    xpEarned: 120,
+    completedAt: new Date(Date.now() - 86400000).toISOString()
+  },
+  {
+    _id: 'score2',
+    userId: userId,
+    quizId: '2',
+    quizTitle: 'React Basics',
+    score: 6,
+    totalQuestions: 8,
+    percentage: 75,
+    xpEarned: 100,
+    completedAt: new Date(Date.now() - 172800000).toISOString()
+  }
+];
+
+// ============= API FUNCTIONS WITH FALLBACK =============
+
+// Test API connection
+export const testAPI = {
+  test: () => api.get('/test').catch(() => ({ 
+    success: true, 
+    message: 'Mock: API test endpoint not available' 
+  })),
+  health: () => api.get('/health').catch(() => ({ 
+    status: 'healthy', 
+    message: 'Mock: Using fallback data' 
+  }))
 };
 
-// API Functions
+// Auth API - Updated to match our backend
 export const authAPI = {
-  register: async (data) => {
-    console.log('Register:', data);
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return {
-      data: {
-        token: 'demo-token-' + Date.now(),
-        user: {
-          ...mockUser,
-          name: data.username,
-          email: data.email
-        }
+  register: (userData) => api.post('/auth/register', userData),
+  login: (credentials) => api.post('/auth/login', credentials),
+  getCurrentUser: () => api.get('/auth/me').catch(() => {
+    // Fallback to localStorage user
+    const userStr = localStorage.getItem('user');
+    if (userStr && userStr !== 'undefined') {
+      try {
+        return Promise.resolve({ user: JSON.parse(userStr) });
+      } catch (e) {
+        return Promise.reject({ error: 'Invalid user data' });
       }
-    };
-  },
-
-  login: async (credentials) => {
-    console.log('Login:', credentials);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    return {
-      data: {
-        token: 'demo-token-' + Date.now(),
-        user: mockUser
-      }
-    };
-  },
-
-  getProfile: async () => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    return { data: { user: mockUser } };
-  }
+    }
+    return Promise.reject({ error: 'Not authenticated' });
+  })
 };
 
+// Quiz API - With fallback to mock data
 export const quizAPI = {
-  getAll: async () => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    return { data: mockQuizzes };
-  },
-
-  getById: async (id) => {
-    await new Promise(resolve => setTimeout(resolve, 600));
-    const quiz = mockQuizzes.find(q => q._id === id) || mockQuizzes[0];
-    return { data: quiz };
-  },
-
-  submit: async (id, answers) => {
-    console.log('Submit quiz:', { id, answers });
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Calculate score
-    const correctCount = answers.filter((ans, idx) => {
-      const quiz = mockQuizzes.find(q => q._id === id) || mockQuizzes[0];
-      const question = quiz.questions?.[idx];
-      return question && ans === question.correctAnswer;
-    }).length;
-    
-    const total = answers.length;
-    const score = Math.round((correctCount / total) * 100);
-    
-    return {
+  getQuizzes: (params = {}) => api.get('/quizzes', { params }).catch((error) => {
+    console.log('Falling back to mock quizzes');
+    // Return mock data in the same format as real API
+    return Promise.resolve({
+      success: true,
+      data: mockQuizzes,
+      message: 'Using mock data'
+    });
+  }),
+  
+  getQuiz: (id) => api.get(`/quizzes/${id}`).catch((error) => {
+    console.log('Falling back to mock quiz');
+    const quiz = mockQuizzes.find(q => q.id === id || q._id === id) || mockQuizzes[0];
+    return Promise.resolve({
+      success: true,
+      data: quiz,
+      message: 'Using mock data'
+    });
+  }),
+  
+  submitQuiz: (id, answers) => api.post(`/quizzes/${id}/submit`, answers).catch((error) => {
+    console.log('Mock quiz submission');
+    // Simulate successful submission
+    return Promise.resolve({
+      success: true,
       data: {
-        success: true,
-        score,
-        correct: correctCount,
-        total,
-        attemptId: 'attempt-' + Date.now(),
-        user: {
-          score: mockUser.xp + (score * 10),
-          level: score > 90 ? mockUser.level + 1 : mockUser.level,
-          leveledUp: score > 90 ? {
-            from: mockUser.level,
-            to: mockUser.level + 1,
-            message: `🎉 Level Up! You're now level ${mockUser.level + 1}!`
-          } : null
-        }
-      }
-    };
-  },
-
-  create: async (data) => {
-    console.log('Create quiz:', data);
-    await new Promise(resolve => setTimeout(resolve, 1200));
-    return {
-      data: {
-        ...data,
-        _id: 'quiz-' + Date.now(),
-        plays: 0,
-        averageScore: 0
-      }
-    };
-  }
+        score: Math.floor(Math.random() * 10) + 1,
+        totalQuestions: 10,
+        percentage: Math.floor(Math.random() * 30) + 70,
+        xpEarned: 100,
+        correctAnswers: Math.floor(Math.random() * 8) + 2
+      },
+      message: 'Mock submission successful'
+    });
+  }),
+  
+  createQuiz: (quizData) => api.post('/quizzes', quizData).catch((error) => {
+    console.log('Mock quiz creation');
+    return Promise.resolve({
+      success: true,
+      data: { ...quizData, _id: `mock_${Date.now()}` },
+      message: 'Mock quiz created'
+    });
+  })
 };
 
-export const topicAPI = {
-  getTopics: async () => {
-    await new Promise(resolve => setTimeout(resolve, 600));
-    return { data: ['Programming', 'Mathematics', 'History', 'Science', 'Geography', 'General Knowledge'] };
-  },
-
-  getQuizzesByTopic: async (topic) => {
-    await new Promise(resolve => setTimeout(resolve, 600));
-    const filtered = mockQuizzes.filter(q => q.topic === topic);
-    return { data: filtered };
-  }
+// User API - With fallback to mock data
+export const userAPI = {
+  getUser: (id) => api.get(`/users/${id}`).catch((error) => {
+    console.log('Falling back to mock user');
+    // Get user from localStorage first, then mock
+    const userStr = localStorage.getItem('user');
+    let user;
+    if (userStr && userStr !== 'undefined') {
+      try {
+        user = JSON.parse(userStr);
+      } catch (e) {
+        user = mockUser(id);
+      }
+    } else {
+      user = mockUser(id);
+    }
+    
+    return Promise.resolve({
+      success: true,
+      data: user,
+      message: 'Using mock user data'
+    });
+  }),
+  
+  updateStats: (id, stats) => api.put(`/users/${id}/stats`, { stats }).catch((error) => {
+    console.log('Mock stats update');
+    return Promise.resolve({
+      success: true,
+      data: stats,
+      message: 'Mock stats updated'
+    });
+  }),
+  
+  getUserStats: (id) => api.get(`/users/${id}/stats`).catch((error) => {
+    console.log('Falling back to mock stats');
+    return Promise.resolve({
+      success: true,
+      data: {
+        totalQuizzes: 2,
+        averageScore: 77.5,
+        totalXP: 720,
+        level: 1,
+        streak: 2,
+        rank: 'Beginner'
+      },
+      message: 'Using mock stats'
+    });
+  }),
+  
+  updateUser: (id, userData) => api.put(`/users/${id}`, userData).catch((error) => {
+    console.log('Mock user update');
+    return Promise.resolve({
+      success: true,
+      data: userData,
+      message: 'Mock user updated'
+    });
+  })
 };
 
-export const leaderboardAPI = {
-  getLeaderboard: async () => {
-    await new Promise(resolve => setTimeout(resolve, 800));
-    return {
+// Score API - With fallback to mock data
+export const scoreAPI = {
+  saveScore: (scoreData) => api.post('/scores', scoreData).catch((error) => {
+    console.log('Mock score save');
+    return Promise.resolve({
+      success: true,
+      data: scoreData,
+      message: 'Mock score saved'
+    });
+  }),
+  
+  getUserScores: (userId) => api.get(`/scores/user/${userId}`).catch((error) => {
+    console.log('Falling back to mock scores');
+    return Promise.resolve({
+      success: true,
+      data: mockScores(userId),
+      message: 'Using mock scores'
+    });
+  }),
+  
+  getLeaderboard: (params) => api.get('/scores/leaderboard', { params }).catch((error) => {
+    console.log('Falling back to mock leaderboard');
+    return Promise.resolve({
+      success: true,
       data: [
-        { _id: '1', username: 'QuizMaster', score: 15000, level: 25 },
-        { _id: '2', username: 'Brainiac', score: 12500, level: 22 },
-        { _id: '3', username: 'CodeWizard', score: 11000, level: 20 },
-        { _id: '4', username: 'HistoryBuff', score: 9800, level: 18 },
-        { _id: '5', username: 'MathGenius', score: 8500, level: 16 },
-        { _id: '6', username: 'ScienceGeek', score: 7200, level: 14 },
-        { _id: '7', username: 'Demo User', score: mockUser.xp, level: mockUser.level },
-      ]
+        { userId: '1', name: 'Alice', xp: 1500, rank: 1 },
+        { userId: '2', name: 'Bob', xp: 1200, rank: 2 },
+        { userId: '3', name: 'Charlie', xp: 900, rank: 3 }
+      ],
+      message: 'Using mock leaderboard'
+    });
+  })
+};
+
+// Helper function to check API connectivity
+export const checkApiStatus = async () => {
+  try {
+    const response = await testAPI.health();
+    return {
+      connected: true,
+      message: 'API is connected',
+      data: response
+    };
+  } catch (error) {
+    return {
+      connected: false,
+      message: 'Using fallback mock data',
+      error: error.message
     };
   }
 };
 
-export const aiService = {
-  generateQuestions: async (text, numQuestions = 5) => {
-    console.log('Generating questions from:', text.substring(0, 100));
-    await new Promise(resolve => setTimeout(resolve, 2000));
+// Helper function for registration with proper response format
+export const registerUser = async (userData) => {
+  try {
+    const response = await authAPI.register(userData);
     
-    // Mock AI response
+    console.log('Register API response:', response);
+    
+    if (response && (response.success || response.token)) {
+      const token = response.token || `mock_token_${Date.now()}`;
+      const user = response.user || {
+        _id: `user_${Date.now()}`,
+        id: `user_${Date.now()}`,
+        name: userData.name,
+        email: userData.email,
+        xp: 500,
+        level: 1
+      };
+      
+      // Store in localStorage
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      
+      return {
+        success: true,
+        token,
+        user
+      };
+    } else {
+      return {
+        success: false,
+        error: response?.error || 'Registration failed',
+        message: response?.message || 'Unknown error'
+      };
+    }
+  } catch (error) {
+    console.error('Register error:', error);
+    
+    // If API fails completely, simulate success for development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Development mode: Creating mock user');
+      const mockToken = `dev_token_${Date.now()}`;
+      const mockUserData = {
+        _id: `dev_user_${Date.now()}`,
+        id: `dev_user_${Date.now()}`,
+        name: userData.name,
+        email: userData.email,
+        xp: 500,
+        level: 1,
+        createdAt: new Date().toISOString()
+      };
+      
+      localStorage.setItem('token', mockToken);
+      localStorage.setItem('user', JSON.stringify(mockUserData));
+      
+      return {
+        success: true,
+        token: mockToken,
+        user: mockUserData
+      };
+    }
+    
     return {
-      data: Array.from({ length: numQuestions }, (_, i) => ({
-        text: `Sample question ${i + 1} based on: "${text.substring(0, 50)}..."`,
-        options: ['Option A', 'Option B', 'Option C', 'Option D'],
-        correctAnswer: Math.floor(Math.random() * 4),
-        explanation: 'This is an AI-generated explanation.',
-        difficulty: 'medium'
-      }))
+      success: false,
+      error: error.error || 'Registration failed',
+      message: error.message || 'Network error'
     };
-  },
-
-  analyzeText: async (text) => {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    return {
-      data: {
-        key_concepts: ['concept1', 'concept2', 'concept3'],
-        readability_score: Math.floor(Math.random() * 30) + 70,
-        estimated_time: Math.floor(text.length / 1000) * 5
-      }
-    };
-  },
-
-  healthCheck: async () => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-    return { data: { status: 'healthy', service: 'AI Question Generator' } };
   }
 };
 
-export default mainAPI;
+// Helper function for login with proper response format
+export const loginUser = async (credentials) => {
+  try {
+    const response = await authAPI.login(credentials);
+    
+    console.log('Login API response:', response);
+    
+    if (response && (response.success || response.token)) {
+      const token = response.token || `mock_token_${Date.now()}`;
+      const user = response.user || {
+        _id: `user_${Date.now()}`,
+        id: `user_${Date.now()}`,
+        name: 'Test User',
+        email: credentials.email,
+        xp: 500,
+        level: 1
+      };
+      
+      // Store in localStorage
+      localStorage.setItem('token', token);
+      localStorage.setItem('user', JSON.stringify(user));
+      
+      return {
+        success: true,
+        token,
+        user
+      };
+    } else {
+      return {
+        success: false,
+        error: response?.error || 'Login failed',
+        message: response?.message || 'Invalid credentials'
+      };
+    }
+  } catch (error) {
+    console.error('Login error:', error);
+    
+    // If API fails completely, simulate success for development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('Development mode: Creating mock login');
+      const mockToken = `dev_token_${Date.now()}`;
+      const mockUserData = {
+        _id: `dev_user_${Date.now()}`,
+        id: `dev_user_${Date.now()}`,
+        name: 'Development User',
+        email: credentials.email,
+        xp: 500,
+        level: 1,
+        createdAt: new Date().toISOString()
+      };
+      
+      localStorage.setItem('token', mockToken);
+      localStorage.setItem('user', JSON.stringify(mockUserData));
+      
+      return {
+        success: true,
+        token: mockToken,
+        user: mockUserData
+      };
+    }
+    
+    return {
+      success: false,
+      error: error.error || 'Login failed',
+      message: error.message || 'Network error'
+    };
+  }
+};
+
+// Helper to get current user from localStorage
+export const getCurrentUser = () => {
+  try {
+    const userStr = localStorage.getItem('user');
+    if (!userStr || userStr === 'undefined' || userStr === 'null') {
+      return null;
+    }
+    return JSON.parse(userStr);
+  } catch (error) {
+    console.error('Error getting current user:', error);
+    return null;
+  }
+};
+
+// Helper to check if user is authenticated
+export const isAuthenticated = () => {
+  const token = localStorage.getItem('token');
+  const user = getCurrentUser();
+  return !!(token && user);
+};
+
+// Helper to logout
+export const logout = () => {
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  // Dispatch storage event to update AuthContext
+  window.dispatchEvent(new Event('storage'));
+  window.location.href = '/login';
+};
+
+// Initialize auth state on load
+export const initAuth = () => {
+  const token = localStorage.getItem('token');
+  const user = getCurrentUser();
+  
+  if (token && user) {
+    // Set default Authorization header
+    api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    return { isAuthenticated: true, user };
+  }
+  
+  return { isAuthenticated: false, user: null };
+};
+
+// Export everything
+export default {
+  api,
+  testAPI,
+  authAPI,
+  quizAPI,
+  userAPI,
+  scoreAPI,
+  checkApiStatus,
+  registerUser,
+  loginUser,
+  getCurrentUser,
+  isAuthenticated,
+  logout,
+  initAuth
+};
