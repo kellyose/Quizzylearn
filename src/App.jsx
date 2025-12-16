@@ -7,7 +7,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import Dashboard from "./pages/Dashboard";
 import Discover from "./pages/Discover";
-import Leaderboard from "./pages/Leaderboard";
+import Leaderboard from "./pages/LeaderBoard";
 import Achievements from "./pages/Achievements";
 import QuizSession from "./pages/QuizSession";
 import CreateQuiz from "./pages/CreateQuiz";
