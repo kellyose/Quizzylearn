@@ -172,8 +172,8 @@ export const authAPI = {
 };
 
 // Quiz API - With fallback to mock data
-//export const quizAPI = {
-//  getQuizzes: (params = {}) => api.get('/quizzes', { params }).catch((error) => {
+export const quizAPI = {
+  getQuizzes: (params = {}) => api.get('/quizzes', { params }).catch((error) => {
     console.log('Falling back to mock quizzes');
     // Return mock data in the same format as real API
     return Promise.resolve({
@@ -217,7 +217,7 @@ export const authAPI = {
       message: 'Mock quiz created'
     });
   })
-};:
+};
 
 // User API - With fallback to mock data
 export const userAPI = {
